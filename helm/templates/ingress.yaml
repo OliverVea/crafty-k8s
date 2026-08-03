@@ -1,0 +1,51 @@
+{{- if .Values.ingress.enabled }}
+{{- /*
+Crafty serves the panel over HTTPS with a self-signed certificate it generates on
+first boot. Traefik therefore has to (a) speak HTTPS to the backend, not HTTP, and
+(b) not verify that certificate. Without both, the ingress returns 500 with an
+x509 error and the panel looks broken while being perfectly healthy.
+*/ -}}
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: {{ include "crafty.fullname" . }}-transport
+  labels:
+    {{- include "crafty.labels" . | nindent 4 }}
+spec:
+  # The backend certificate is self-signed by Crafty itself and cannot be verified.
+  # The hop is pod-local inside the cluster, and the edge still serves a real cert.
+  insecureSkipVerify: true
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "crafty.fullname" . }}
+  labels:
+    {{- include "crafty.labels" . | nindent 4 }}
+  annotations:
+    # Talk HTTPS to the backend, using the transport above.
+    traefik.ingress.kubernetes.io/service.serversscheme: https
+    traefik.ingress.kubernetes.io/service.serverstransport: {{ .Release.Namespace }}-{{ include "crafty.fullname" . }}-transport@kubernetescrd
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ include "crafty.fullname" . }}-tls
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "crafty.fullname" . }}
+                port:
+                  name: panel
+{{- end }}

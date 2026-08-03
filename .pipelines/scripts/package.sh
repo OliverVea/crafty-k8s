@@ -53,6 +53,10 @@ esac
 mkdir -p /output
 helm package "$CHART" -d /output
 mv /output/*.tgz /output/chart.tgz
+# Carry any environment-specific values files alongside the chart, so deploy can
+# select one without re-fetching the repo.
+cp "$CHART"/values-*.yaml /output/ 2>/dev/null || true
+
 date +%Y%m%d-%H%M%S > /output/version.txt
 echo "$IMAGE" > /output/image.txt
 

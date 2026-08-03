@@ -44,6 +44,27 @@ service:
     enabled: false
     port: 8123
 
+# A real hostname for the panel, routed through Traefik with a Let's Encrypt cert,
+# instead of https://<node-ip>:8443 and a browser warning.
+#
+# NOTE this covers the PANEL only. The Minecraft ports stay raw TCP on the LoadBalancer
+# above: an HTTP ingress cannot carry the Minecraft protocol, so clients still connect
+# to the host/IP on 25565.
+ingress:
+  enabled: false
+  className: traefik
+  host: crafty-private.ovea.pro
+  tls:
+    enabled: true
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Points the DNS record at the Tailscale address, matching the other
+    # *-private.ovea.pro services. This is not exposed to the public internet.
+    external-dns.alpha.kubernetes.io/target: 100.100.117.17
+    # Deliberately NOT behind the authentik forward-auth middleware that the other
+    # private services use: Crafty has its own account system, and its websocket
+    # console would be fighting an SSO redirect.
+
 resources:
   requests:
     # CPU requests but NO CPU limit, on purpose: CFS quota throttling mid-tick is

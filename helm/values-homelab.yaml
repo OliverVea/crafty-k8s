@@ -1,0 +1,7 @@
+# Overrides for this specific homelab (bulwark-m2, ovea.pro, Tailscale, cert-manager).
+#
+# Kept OUT of values.yaml on purpose: the chart defaults have to stay usable by anyone,
+# and a fork without external-dns and a letsencrypt ClusterIssuer would get a broken
+# ingress. The deploy step selects this file via VALUES_FILE.
+ingress:
+  enabled: true

@@ -45,6 +45,8 @@ processingSteps:
         DEPLOY_HOST: oliver@bulwark-m2
         RELEASE: crafty
         NAMESPACE: apps
+        # Homelab-specific overrides (ingress). Drop this line in a fork.
+        VALUES_FILE: values-homelab.yaml
   # Post-deploy verification. `helm --wait` only proves the pod reached Ready — it does
   # not prove Crafty serves, nor that the image running is the one the chart specifies.
   # This step asserts both and fails the pipeline if either is wrong.
@@ -57,4 +59,4 @@ processingSteps:
         RELEASE: crafty
         NAMESPACE: apps
         # Where to expect a live panel. Leave unset in a fork to skip the HTTP check.
-        PANEL_URL: https://192.168.11.8:8443
+        PANEL_URL: https://crafty-private.ovea.pro

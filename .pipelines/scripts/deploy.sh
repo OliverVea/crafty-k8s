@@ -25,10 +25,21 @@ echo "Deploying $RELEASE ($VERSION) to $NAMESPACE on $DEPLOY_HOST"
 REMOTE="/tmp/$RELEASE-$NAMESPACE-$VERSION.tgz"
 scp -o StrictHostKeyChecking=no "$INPUT_DIR/chart.tgz" "$DEPLOY_HOST:$REMOTE"
 
+# Optional environment-specific overrides (VALUES_FILE, e.g. values-homelab.yaml).
+# Absent by default so a fork deploys the generic chart.
+HELM_VALUES=""
+if [ -n "$VALUES_FILE" ]; then
+  [ -f "$INPUT_DIR/$VALUES_FILE" ] || { echo "VALUES_FILE $VALUES_FILE not in bundle"; exit 1; }
+  REMOTE_VALUES="/tmp/$RELEASE-$NAMESPACE-$VERSION-values.yaml"
+  scp -o StrictHostKeyChecking=no "$INPUT_DIR/$VALUES_FILE" "$DEPLOY_HOST:$REMOTE_VALUES"
+  HELM_VALUES="-f $REMOTE_VALUES"
+  echo "Using overrides: $VALUES_FILE"
+fi
+
 # --wait gates on the rollout, so a CrashLooping pod fails the pipeline here rather
 # than being reported green. Necessary but NOT sufficient — see verify.sh.
 ssh -o StrictHostKeyChecking=no "$DEPLOY_HOST" \
-  "helm upgrade --install $RELEASE $REMOTE -n $NAMESPACE --create-namespace --wait --timeout 10m"
-ssh -o StrictHostKeyChecking=no "$DEPLOY_HOST" "rm -f $REMOTE"
+  "helm upgrade --install $RELEASE $REMOTE -n $NAMESPACE --create-namespace $HELM_VALUES --wait --timeout 10m"
+ssh -o StrictHostKeyChecking=no "$DEPLOY_HOST" "rm -f $REMOTE $REMOTE_VALUES"
 
 echo "Deployed $RELEASE:$VERSION"
