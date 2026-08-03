@@ -29,7 +29,7 @@ productionSteps:
     configuration:
       image: alpine/helm:3.21.3
       scriptFile: scripts/package.sh
-      env:
+      environmentVariables:
         REPO: OliverVea/crafty-k8s
         BRANCH: main
         CHART_PATH: helm
@@ -41,7 +41,7 @@ processingSteps:
       scriptFile: scripts/deploy.sh
       # Everything host-specific lives here rather than baked into the script, so a
       # fork only edits these blocks. None of it is secret.
-      env:
+      environmentVariables:
         DEPLOY_HOST: oliver@bulwark-m2
         RELEASE: crafty
         NAMESPACE: apps
@@ -52,7 +52,7 @@ processingSteps:
     configuration:
       image: alpine:latest
       scriptFile: scripts/verify.sh
-      env:
+      environmentVariables:
         DEPLOY_HOST: oliver@bulwark-m2
         RELEASE: crafty
         NAMESPACE: apps
