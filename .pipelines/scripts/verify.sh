@@ -25,8 +25,10 @@ ssh -o StrictHostKeyChecking=no "$DEPLOY_HOST" \
   "kubectl -n $NAMESPACE rollout status deploy/$RELEASE --timeout=5m"
 
 echo "--- running image ---"
+# The jsonpath MUST stay single-quoted for the remote shell: the deploy host's login
+# shell is zsh, which glob-expands the bare [0] and dies with "no matches found".
 RUNNING=$(ssh -o StrictHostKeyChecking=no "$DEPLOY_HOST" \
-  "kubectl -n $NAMESPACE get deploy/$RELEASE -o jsonpath={.spec.template.spec.containers[0].image}")
+  "kubectl -n $NAMESPACE get deploy/$RELEASE -o 'jsonpath={.spec.template.spec.containers[0].image}'")
 echo "expected: $EXPECTED_IMAGE"
 echo "running:  $RUNNING"
 [ "$RUNNING" = "$EXPECTED_IMAGE" ] || { echo "image mismatch"; exit 1; }
