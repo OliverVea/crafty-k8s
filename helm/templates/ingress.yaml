@@ -23,9 +23,11 @@ metadata:
   labels:
     {{- include "crafty.labels" . | nindent 4 }}
   annotations:
-    # Talk HTTPS to the backend, using the transport above.
-    traefik.ingress.kubernetes.io/service.serversscheme: https
-    traefik.ingress.kubernetes.io/service.serverstransport: {{ .Release.Namespace }}-{{ include "crafty.fullname" . }}-transport@kubernetescrd
+    {{- /* NOTE: the traefik service.serversscheme / service.serverstransport
+        annotations do NOT belong here. Traefik reads service.* annotations from
+        the SERVICE object; on an Ingress they are silently ignored and Traefik
+        talks plain HTTP to Crafty's HTTPS port, which is a 502. They live in
+        service.yaml. */}}
     {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}

@@ -60,3 +60,6 @@ processingSteps:
         NAMESPACE: apps
         # Where to expect a live panel. Leave unset in a fork to skip the HTTP check.
         PANEL_URL: https://crafty-private.ovea.pro
+        # Pin the check at the cluster ingress rather than trusting public DNS
+        # from inside a pod. Unset to use normal resolution.
+        INGRESS_IP: 192.168.11.8

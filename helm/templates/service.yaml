@@ -4,6 +4,15 @@ metadata:
   name: {{ include "crafty.fullname" . }}
   labels:
     {{- include "crafty.labels" . | nindent 4 }}
+  {{- if .Values.ingress.enabled }}
+  annotations:
+    # Traefik reads these from the SERVICE, not the Ingress. Crafty's panel port
+    # speaks HTTPS with a self-signed cert, so Traefik must use the https scheme
+    # and the ServersTransport that skips verification. Put these on the Ingress
+    # instead and you get a 502 against a perfectly healthy pod.
+    traefik.ingress.kubernetes.io/service.serversscheme: https
+    traefik.ingress.kubernetes.io/service.serverstransport: {{ .Release.Namespace }}-{{ include "crafty.fullname" . }}-transport@kubernetescrd
+  {{- end }}
 spec:
   type: {{ .Values.service.type }}
   selector:

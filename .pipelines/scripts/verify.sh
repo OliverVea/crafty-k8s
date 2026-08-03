@@ -37,7 +37,17 @@ echo "running:  $RUNNING"
 if [ -n "$PANEL_URL" ]; then
   echo "--- panel responds ---"
   # -k: the panel serves a self-signed certificate by design.
-  CODE=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 30 "$PANEL_URL/login" || echo 000)
+  # --resolve pins the request to the cluster's own ingress IP. Without it the job
+  # follows whatever public DNS says, which from inside the cluster can land on a
+  # different entrypoint entirely and 404 — a false failure that says nothing about
+  # whether this deployment works.
+  RESOLVE=""
+  if [ -n "$INGRESS_IP" ]; then
+    HOSTNAME_ONLY=$(echo "$PANEL_URL" | sed -e 's|^https\{0,1\}://||' -e 's|/.*$||')
+    RESOLVE="--resolve $HOSTNAME_ONLY:443:$INGRESS_IP"
+  fi
+  # shellcheck disable=SC2086
+  CODE=$(curl -sk $RESOLVE -o /dev/null -w "%{http_code}" --max-time 30 "$PANEL_URL/login" || echo 000)
   echo "GET $PANEL_URL/login -> $CODE"
   [ "$CODE" = "200" ] || { echo "panel did not return 200"; exit 1; }
 else
