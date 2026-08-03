@@ -1,24 +1,38 @@
 # CD for the Crafty Controller deployment, run by Olve.Pipelines.
 #
-# There is NO production step. Nothing here is built: Crafty is a third-party image
-# pulled straight from GitLab's registry, so the only work is `helm upgrade`. The
-# deploy step fetches this repo itself for the chart.
-#
 # What this pipeline deploys is the PANEL, never a modpack. Which Minecraft servers
 # exist, what version they run and which modpack is installed are runtime state in
 # Crafty's PVC — created from its web UI, never from git. That separation is
 # deliberate: it keeps this repo useful to anyone who wants a Minecraft panel on
 # Kubernetes, not just to one person's world.
+#
+# Shape: package (production) -> deploy -> verify (processing, in list order).
+#
+# There is no image build, because Crafty is a third-party image pulled from GitLab's
+# registry. The production step still earns its place: it lints and renders the chart
+# and packages it into the ArtifactBundle, so a broken template fails in a job instead
+# of on the live cluster, and deploy installs the exact artifact that was validated
+# rather than re-fetching the repo and hoping it still matches.
 apiVersion: "0.0"
 name: crafty
-description: Deploy Crafty Controller (Minecraft panel) to a k3s cluster with Helm.
-version: "1"
+description: Package, deploy and verify Crafty Controller (Minecraft panel) on k3s.
+version: "2"
 
 secrets:
   - name: SSH_PRIVATE_KEY
-    description: SSH key for running helm against the cluster host.
+    description: SSH key for running helm and kubectl against the cluster host.
 
-# No productionSteps: there is no image to build and no artifact to bundle.
+productionSteps:
+  # Validate and package the chart. No cluster access and no secrets used — this step
+  # is the gate: if it fails, nothing is deployed.
+  - name: package
+    configuration:
+      image: alpine/helm:3.21.3
+      scriptFile: scripts/package.sh
+      env:
+        REPO: OliverVea/crafty-k8s
+        BRANCH: main
+        CHART_PATH: helm
 
 processingSteps:
   - name: deploy
@@ -26,10 +40,21 @@ processingSteps:
       image: alpine:latest
       scriptFile: scripts/deploy.sh
       # Everything host-specific lives here rather than baked into the script, so a
-      # fork only edits this block. None of it is secret.
+      # fork only edits these blocks. None of it is secret.
       env:
         DEPLOY_HOST: oliver@bulwark-m2
         RELEASE: crafty
         NAMESPACE: apps
-        REPO: OliverVea/crafty-k8s
-        BRANCH: main
+  # Post-deploy verification. `helm --wait` only proves the pod reached Ready — it does
+  # not prove Crafty serves, nor that the image running is the one the chart specifies.
+  # This step asserts both and fails the pipeline if either is wrong.
+  - name: verify
+    configuration:
+      image: alpine:latest
+      scriptFile: scripts/verify.sh
+      env:
+        DEPLOY_HOST: oliver@bulwark-m2
+        RELEASE: crafty
+        NAMESPACE: apps
+        # Where to expect a live panel. Leave unset in a fork to skip the HTTP check.
+        PANEL_URL: https://192.168.11.8:8443
