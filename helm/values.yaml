@@ -1,0 +1,67 @@
+# Crafty Controller 4.
+#
+# This chart deploys the PANEL only. It deliberately knows nothing about which
+# Minecraft version, mod loader or modpack you run — those are created and managed
+# from Crafty's web UI at runtime and live in the PVC, never in git. That is the
+# whole point: the same chart serves a vanilla server, a modpack, or several at once.
+image:
+  repository: registry.gitlab.com/crafty-controller/crafty-4
+  # Pinned deliberately. `latest` would mean a silent panel upgrade on every pod
+  # restart, which is not a thing you want to discover mid-session.
+  tag: "4.10.8"
+  pullPolicy: IfNotPresent
+
+timezone: Etc/UTC
+
+persistence:
+  enabled: true
+  # local-path = node NVMe. Never point this at NFS or any network-backed volume:
+  # Minecraft chunk saves are latency-sensitive and network storage produces
+  # hitching that looks exactly like a mod bug.
+  storageClass: local-path
+  size: 100Gi
+  # Existing claim to adopt instead of creating one. Empty = create.
+  existingClaim: ""
+
+service:
+  # LoadBalancer works on k3s via the built-in servicelb (klipper), which binds
+  # these ports directly on the node. That is what gets you a real 25565 on the
+  # LAN — NodePort's 30000-32767 range cannot.
+  type: LoadBalancer
+  panelPort: 8443
+  # Minecraft server ports. Crafty can host many servers; each needs its own port
+  # published here. Add an entry when you add a server in the UI.
+  serverPorts:
+    - name: mc-primary
+      port: 25565
+    - name: mc-secondary
+      port: 25566
+  # Set to publish Bedrock (UDP) or Dynmap. Off by default.
+  bedrock:
+    enabled: false
+    port: 19132
+  dynmap:
+    enabled: false
+    port: 8123
+
+resources:
+  requests:
+    # CPU requests but NO CPU limit, on purpose: CFS quota throttling mid-tick is
+    # the top cause of phantom TPS stutter on containerized Minecraft servers.
+    cpu: "2"
+    memory: 4Gi
+  limits:
+    # Memory limit must cover Crafty itself PLUS every server JVM it spawns as a
+    # subprocess. JVM metaspace and direct buffers live outside -Xmx, so a limit set
+    # equal to the heap gets the pod OOM-killed mid-session. Rule of thumb: sum of
+    # all server heaps + ~2Gi.
+    memory: 12Gi
+
+# Crafty's image runs as a non-root user that relies on ROOT GROUP permissions on
+# its /crafty mounts. fsGroup 0 is what makes the mounted PVC writable for it.
+podSecurityContext:
+  fsGroup: 0
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

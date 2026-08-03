@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "crafty.fullname" . }}
+  labels:
+    {{- include "crafty.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "crafty.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: panel
+      port: {{ .Values.service.panelPort }}
+      targetPort: panel
+      protocol: TCP
+    {{- range .Values.service.serverPorts }}
+    - name: {{ .name }}
+      port: {{ .port }}
+      targetPort: {{ .name }}
+      protocol: TCP
+    {{- end }}
+    {{- if .Values.service.bedrock.enabled }}
+    - name: bedrock
+      port: {{ .Values.service.bedrock.port }}
+      targetPort: bedrock
+      protocol: UDP
+    {{- end }}
+    {{- if .Values.service.dynmap.enabled }}
+    - name: dynmap
+      port: {{ .Values.service.dynmap.port }}
+      targetPort: dynmap
+      protocol: TCP
+    {{- end }}

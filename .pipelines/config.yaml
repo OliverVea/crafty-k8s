@@ -1,0 +1,35 @@
+# CD for the Crafty Controller deployment, run by Olve.Pipelines.
+#
+# There is NO production step. Nothing here is built: Crafty is a third-party image
+# pulled straight from GitLab's registry, so the only work is `helm upgrade`. The
+# deploy step fetches this repo itself for the chart.
+#
+# What this pipeline deploys is the PANEL, never a modpack. Which Minecraft servers
+# exist, what version they run and which modpack is installed are runtime state in
+# Crafty's PVC — created from its web UI, never from git. That separation is
+# deliberate: it keeps this repo useful to anyone who wants a Minecraft panel on
+# Kubernetes, not just to one person's world.
+apiVersion: "0.0"
+name: crafty
+description: Deploy Crafty Controller (Minecraft panel) to a k3s cluster with Helm.
+version: "1"
+
+secrets:
+  - name: SSH_PRIVATE_KEY
+    description: SSH key for running helm against the cluster host.
+
+# No productionSteps: there is no image to build and no artifact to bundle.
+
+processingSteps:
+  - name: deploy
+    configuration:
+      image: alpine:latest
+      scriptFile: scripts/deploy.sh
+      # Everything host-specific lives here rather than baked into the script, so a
+      # fork only edits this block. None of it is secret.
+      env:
+        DEPLOY_HOST: oliver@bulwark-m2
+        RELEASE: crafty
+        NAMESPACE: apps
+        REPO: OliverVea/crafty-k8s
+        BRANCH: main

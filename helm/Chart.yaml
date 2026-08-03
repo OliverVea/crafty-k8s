@@ -1,0 +1,7 @@
+apiVersion: v2
+name: crafty
+description: Crafty Controller 4 — a self-hosted Minecraft server panel, deployed as a single stateful pod.
+type: application
+version: 0.1.0
+# The Crafty release this chart tracks by default. Override with image.tag.
+appVersion: "4.10.8"

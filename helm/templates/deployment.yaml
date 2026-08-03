@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "crafty.fullname" . }}
+  labels:
+    {{- include "crafty.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # Recreate, not RollingUpdate: the PVC is ReadWriteOnce and two Craftys must never
+  # hold the same server directory at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "crafty.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "crafty.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: crafty
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: TZ
+              value: {{ .Values.timezone | quote }}
+          ports:
+            - name: panel
+              containerPort: {{ .Values.service.panelPort }}
+              protocol: TCP
+            {{- range .Values.service.serverPorts }}
+            - name: {{ .name }}
+              containerPort: {{ .port }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.service.bedrock.enabled }}
+            - name: bedrock
+              containerPort: {{ .Values.service.bedrock.port }}
+              protocol: UDP
+            {{- end }}
+            {{- if .Values.service.dynmap.enabled }}
+            - name: dynmap
+              containerPort: {{ .Values.service.dynmap.port }}
+              protocol: TCP
+            {{- end }}
+          # TCP, not HTTP: the panel serves HTTPS with a self-signed cert.
+          startupProbe:
+            tcpSocket:
+              port: panel
+            # First boot generates certs and the database, and is much slower than
+            # a restart. 60 x 10s = 10 minutes before the pod is called failed.
+            periodSeconds: 10
+            failureThreshold: 60
+          livenessProbe:
+            tcpSocket:
+              port: panel
+            periodSeconds: 30
+            failureThreshold: 5
+          readinessProbe:
+            tcpSocket:
+              port: panel
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.persistence.enabled }}
+          # One PVC, subPath per Crafty directory. Keeps the worlds, the panel
+          # database and the backups on one volume without mounting the container
+          # root read-write.
+          volumeMounts:
+            - name: data
+              mountPath: /crafty/servers
+              subPath: servers
+            - name: data
+              mountPath: /crafty/backups
+              subPath: backups
+            - name: data
+              mountPath: /crafty/logs
+              subPath: logs
+            - name: data
+              mountPath: /crafty/app/config
+              subPath: config
+            - name: data
+              mountPath: /crafty/import
+              subPath: import
+          {{- end }}
+      {{- if .Values.persistence.enabled }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "crafty.pvcName" . }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
