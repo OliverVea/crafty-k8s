@@ -5,3 +5,7 @@
 # ingress. The deploy step selects this file via VALUES_FILE.
 ingress:
   enabled: true
+
+# Keep a mods fingerprint inside every backup for this world (StaTech Industry 2).
+modsManifest:
+  enabled: true

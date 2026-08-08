@@ -1,0 +1,94 @@
+{{- if .Values.modsManifest.enabled }}
+# Optional maintenance job. Crafty has NO shell hook — its backup `before`/`after`
+# fields only write to the Minecraft server console (send_command), and a modpack
+# update swaps PVC-resident jars while restarting the server subprocess, not the pod,
+# so no pod lifecycle hook fires on it either. The only way to keep a mods fingerprint
+# fresh inside each backup zip is an out-of-band, time-based job like this one.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "crafty.fullname" . }}-mods-manifest
+  labels:
+    {{- include "crafty.labels" . | nindent 4 }}
+data:
+  generate.sh: |
+    #!/bin/sh
+    # Write mods-manifest.txt (sha256 + size of every *.jar) into each server dir that
+    # has mods, so a fingerprint of the installed modpack rides along in every backup.
+    set -eu
+    export LC_ALL=C   # deterministic C-locale glob order -> minimal run-to-run diffs
+
+    for server in /servers/*/; do
+      mods="${server}mods"
+      [ -d "$mods" ] || continue
+
+      # Collect the jars. If the glob did not expand, "$1" is the literal pattern and
+      # does not exist, so a mod-free server (or a non-NeoForge one) is skipped.
+      set -- "$mods"/*.jar
+      [ -e "$1" ] || continue
+
+      out="${server}mods-manifest.txt"
+      tmp="${out}.tmp"
+      {
+        echo "# Mod manifest"
+        echo "# Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "# Mod count: $#"
+        echo "#"
+        echo "# sha256  size_bytes  filename   (version numbers are in the filenames)"
+        echo ""
+        for jar in "$@"; do
+          hash=$(sha256sum "$jar" | cut -c1-16)
+          size=$(stat -c %s "$jar")
+          printf '%s%12d  %s\n' "$hash" "$size" "$(basename "$jar")"
+        done
+      } > "$tmp"
+      mv "$tmp" "$out"
+      echo "wrote $out ($# mods)"
+    done
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "crafty.fullname" . }}-mods-manifest
+  labels:
+    {{- include "crafty.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.modsManifest.schedule | quote }}
+  # Never let two runs overlap on the same server dir.
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            {{- include "crafty.selectorLabels" . | nindent 12 }}
+        spec:
+          restartPolicy: OnFailure
+          # Match the panel pod's fsGroup so the manifest lands writable via the root
+          # group, the same way Crafty's own /crafty mounts work.
+          securityContext:
+            fsGroup: 0
+          containers:
+            - name: mods-manifest
+              image: {{ .Values.modsManifest.image | quote }}
+              command: ["sh", "/scripts/generate.sh"]
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                # Same subPath the panel mounts at /crafty/servers. The local-path PV
+                # is node-pinned, so this job schedules onto the same node as the panel
+                # and the ReadWriteOnce claim mounts fine alongside it.
+                - name: data
+                  mountPath: /servers
+                  subPath: servers
+          volumes:
+            - name: scripts
+              configMap:
+                name: {{ include "crafty.fullname" . }}-mods-manifest
+            - name: data
+              persistentVolumeClaim:
+                claimName: {{ include "crafty.pvcName" . }}
+{{- end }}

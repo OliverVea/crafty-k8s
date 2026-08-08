@@ -86,3 +86,18 @@ podSecurityContext:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Optional maintenance job: regenerate a mods-manifest.txt (truncated sha256 + size of
+# every *.jar) inside each server dir, so a fingerprint of the installed modpack rides
+# along in every backup zip and disaster recovery knows exactly what was installed.
+#
+# OFF by default. The chart is otherwise mod-agnostic (see the note at the top of this
+# file); this is the one opt-in feature that peeks at server contents. Crafty offers no
+# native way to do this — its backup hooks are console-only — so it lives here. It only
+# writes a manifest for servers that actually have mods and touches nothing else.
+modsManifest:
+  enabled: false
+  # Daily at 04:00 (container TZ, default UTC). Mods change rarely, so daily is plenty.
+  schedule: "0 4 * * *"
+  # Needs only sha256sum, stat, date and a POSIX shell — busybox/alpine covers it.
+  image: alpine:3.20
