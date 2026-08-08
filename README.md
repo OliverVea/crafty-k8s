@@ -5,7 +5,8 @@ self-hosted Minecraft server panel — on a k3s cluster.
 
 ## What this does and does not manage
 
-**It manages the panel.** One pod, one volume, one LoadBalancer service. That is the whole scope.
+**It manages the panel.** One pod, two volumes (worlds on NVMe, backups on the bulk HDD) and one
+LoadBalancer service. That is the whole scope.
 
 **It does not manage modpacks, versions, or worlds.** Which servers exist, what Minecraft version
 and mod loader they run, and which modpack is installed are all created from Crafty's web UI and
@@ -45,13 +46,16 @@ the type. The ones that matter:
 | Value | Default | Why |
 |---|---|---|
 | `image.tag` | `4.10.8` | Pinned. `latest` means a silent panel upgrade on every pod restart. |
-| `persistence.storageClass` | `local-path` | Node NVMe. **Never** use NFS or network storage — chunk saves are latency-sensitive and produce hitching that reads as a mod bug. |
-| `persistence.size` | `100Gi` | Worlds plus backups. The PVC is annotated `helm.sh/resource-policy: keep`, so uninstalling the release does not delete your worlds. |
+| `persistence.storageClass` | `local-path` | Node NVMe for worlds. **Never** use NFS or network storage — chunk saves are latency-sensitive and produce hitching that reads as a mod bug. |
+| `persistence.size` | `100Gi` | Worlds, panel database and logs. The PVC is annotated `helm.sh/resource-policy: keep`, so uninstalling the release does not delete your worlds. |
+| `persistence.backups.storageClass` | `bulk` | Backups live on their own volume, off the NVMe. `bulk` is a **local** HDD, so the network-storage warning above does not apply — backups are large sequential writes that tolerate the latency. |
+| `persistence.backups.size` | `50Gi` | Backup retention headroom. Also `keep`-annotated, so backups survive an uninstall. |
 | `service.type` | `LoadBalancer` | On k3s, servicelb binds these ports on the node, which is how you get a real `25565`. NodePort's 30000-32767 range cannot. |
 | `service.serverPorts` | `25565`, `25566` | One entry per Minecraft server you host. Add an entry when you add a server. |
 | `resources.limits.memory` | `12Gi` | Must cover Crafty **plus every server JVM it spawns**. JVM metaspace and direct buffers live outside `-Xmx`, so a limit equal to the heap gets the pod OOM-killed mid-session. |
 | `resources.requests.cpu` | `2` | Requests, but deliberately **no CPU limit**: CFS quota throttling mid-tick is the top cause of phantom TPS stutter on containerized Minecraft servers. |
 | `podSecurityContext.fsGroup` | `0` | Crafty runs as a non-root user relying on root-group permissions on its `/crafty` mounts. Without this the volume is not writable. |
+| `modsManifest.enabled` | `false` | Opt-in daily CronJob that writes a `mods-manifest.txt` (sha256 + size of every `*.jar`) into each server dir, so a fingerprint of the installed modpack rides along in every backup. Off by default to keep the chart mod-agnostic; on in `values-homelab.yaml`. |
 
 ### Java versions
 

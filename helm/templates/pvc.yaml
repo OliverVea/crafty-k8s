@@ -16,3 +16,24 @@ spec:
     requests:
       storage: {{ .Values.persistence.size }}
 {{- end }}
+{{- if and .Values.persistence.enabled (not .Values.persistence.backups.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "crafty.backupsPvcName" . }}
+  labels:
+    {{- include "crafty.labels" . | nindent 4 }}
+  annotations:
+    # Backups outlive the release too: deleting the release must not delete them.
+    # (The `bulk` StorageClass is Retain-policy as well, so the PV survives even a
+    # PVC delete — see /mnt/minio-data/README.md.)
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.persistence.backups.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.backups.size }}
+{{- end }}

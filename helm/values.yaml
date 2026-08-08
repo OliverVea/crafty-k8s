@@ -22,6 +22,17 @@ persistence:
   size: 100Gi
   # Existing claim to adopt instead of creating one. Empty = create.
   existingClaim: ""
+  # Backups get their OWN volume, deliberately off the NVMe. The warning above does
+  # not apply here: `bulk` is a LOCAL disk (a local-path provisioner backed by an
+  # on-node HDD at /mnt/minio-data), just a spinning one. Backups are large,
+  # infrequent, sequential writes that tolerate HDD latency fine — unlike the live
+  # chunk saves in `servers`, which must stay on the fast NVMe above. Keeping the
+  # mount path at /crafty/backups is what keeps backups visible in the Crafty UI.
+  backups:
+    storageClass: bulk
+    size: 50Gi
+    # Existing claim to adopt instead of creating one. Empty = create.
+    existingClaim: ""
 
 service:
   # LoadBalancer works on k3s via the built-in servicelb (klipper), which binds

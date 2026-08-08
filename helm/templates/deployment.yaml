@@ -66,16 +66,16 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- if .Values.persistence.enabled }}
-          # One PVC, subPath per Crafty directory. Keeps the worlds, the panel
-          # database and the backups on one volume without mounting the container
-          # root read-write.
+          # Two PVCs. The `data` claim holds the worlds, panel database and logs via a
+          # subPath each — one NVMe volume, no read-write container root. Backups get a
+          # separate `backups` claim on the bulk HDD (see values.yaml), mounted at the
+          # same /crafty/backups path so they still show up in the Crafty UI.
           volumeMounts:
             - name: data
               mountPath: /crafty/servers
               subPath: servers
-            - name: data
+            - name: backups
               mountPath: /crafty/backups
-              subPath: backups
             - name: data
               mountPath: /crafty/logs
               subPath: logs
@@ -91,6 +91,9 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "crafty.pvcName" . }}
+        - name: backups
+          persistentVolumeClaim:
+            claimName: {{ include "crafty.backupsPvcName" . }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

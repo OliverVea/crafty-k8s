@@ -25,3 +25,11 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{ include "crafty.fullname" . }}-data
 {{- end -}}
 {{- end -}}
+
+{{- define "crafty.backupsPvcName" -}}
+{{- if .Values.persistence.backups.existingClaim -}}
+{{ .Values.persistence.backups.existingClaim }}
+{{- else -}}
+{{ include "crafty.fullname" . }}-backups
+{{- end -}}
+{{- end -}}
