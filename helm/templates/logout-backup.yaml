@@ -1,0 +1,122 @@
+{{- if .Values.logoutBackup.enabled }}
+# Optional "back up on last logout" trigger. Crafty's own backup scheduling is purely
+# time-based (minutes/hours/days/crontab) — there is no built-in "when the last player
+# leaves" hook. This tiny poller watches the server's online-player count over the API
+# and fires a chosen backup config the moment the count drops to zero. It is a pure API
+# client: no PVC, no server-log access. Off by default; the world-specific ids live in
+# values-homelab.yaml, matching the mods-manifest job.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "crafty.fullname" . }}-logout-backup
+  labels:
+    {{- include "crafty.labels" . | nindent 4 }}
+data:
+  poll.py: |
+    import json, os, ssl, time, urllib.request
+
+    BASE = os.environ["CRAFTY_URL"].rstrip("/")
+    SID = os.environ["SERVER_ID"]
+    CFG = os.environ["BACKUP_CONFIG_ID"]
+    INTERVAL = int(os.environ.get("POLL_SECONDS", "30"))
+    with open("/secret/token") as f:
+        TOKEN = f.read().strip()
+
+    # The panel serves a self-signed cert; this is an in-cluster call to its Service.
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    def call(path, method="GET"):
+        r = urllib.request.Request(
+            BASE + "/api/v2" + path,
+            headers={"Authorization": "Bearer " + TOKEN},
+            method=method,
+        )
+        with urllib.request.urlopen(r, context=ctx, timeout=15) as resp:
+            return json.load(resp)
+
+    def log(msg):
+        print(msg, flush=True)
+
+    log("logout-backup poller: server=%s cfg=%s interval=%ss url=%s"
+        % (SID, CFG, INTERVAL, BASE))
+
+    # prev = last observed online count while the server was up. None means "no known
+    # baseline" (startup, or server offline) so the first reading only sets the baseline
+    # and never triggers a spurious backup.
+    prev = None
+    while True:
+        try:
+            d = call("/servers/%s/stats" % SID)["data"]
+            if not d.get("running"):
+                prev = None
+            else:
+                online = d.get("online")
+                if online is not None:
+                    online = int(online)
+                    if prev is not None and prev > 0 and online == 0:
+                        log("last player left (was %d, now 0) -> backup %s" % (prev, CFG))
+                        call("/servers/%s/action/backup_server/%s" % (SID, CFG), "POST")
+                    prev = online
+        except Exception as e:  # noqa: BLE001 - keep polling through transient errors
+            log("poll error: %s" % e)
+        time.sleep(INTERVAL)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "crafty.fullname" . }}-logout-backup
+  labels:
+    {{- include "crafty.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "crafty.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: logout-backup
+  template:
+    metadata:
+      labels:
+        {{- include "crafty.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: logout-backup
+    spec:
+      containers:
+        - name: logout-backup
+          image: {{ .Values.logoutBackup.image | quote }}
+          command: ["python3", "/app/poll.py"]
+          env:
+            - name: CRAFTY_URL
+              value: {{ .Values.logoutBackup.craftyUrl | default (printf "https://%s.%s.svc.cluster.local:%v" (include "crafty.fullname" .) .Release.Namespace .Values.service.panelPort) | quote }}
+            - name: SERVER_ID
+              value: {{ .Values.logoutBackup.serverId | quote }}
+            - name: BACKUP_CONFIG_ID
+              value: {{ .Values.logoutBackup.backupConfigId | quote }}
+            - name: POLL_SECONDS
+              value: {{ .Values.logoutBackup.pollSeconds | quote }}
+          volumeMounts:
+            - name: script
+              mountPath: /app
+            # Token as a file, not an env var, so it does not leak in `kubectl describe`.
+            - name: api-key
+              mountPath: /secret
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+      volumes:
+        - name: script
+          configMap:
+            name: {{ include "crafty.fullname" . }}-logout-backup
+        - name: api-key
+          secret:
+            # Created out-of-band (a scoped Crafty API key), never in git — like the
+            # panel's admin credentials. See README.
+            secretName: {{ .Values.logoutBackup.apiKeySecret | quote }}
+            items:
+              - key: {{ .Values.logoutBackup.apiKeySecretKey | quote }}
+                path: token
+{{- end }}

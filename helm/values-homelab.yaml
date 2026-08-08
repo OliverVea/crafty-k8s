@@ -9,3 +9,10 @@ ingress:
 # Keep a mods fingerprint inside every backup for this world (StaTech Industry 2).
 modsManifest:
   enabled: true
+
+# Fire the "On last logout" backup config when the last player leaves StaTech Industry 2.
+# The scoped API key lives in the crafty-api-key secret (created out-of-band).
+logoutBackup:
+  enabled: true
+  serverId: "7be2fb79-643e-492f-84e8-1a0f883dfe6e"
+  backupConfigId: "e73e84bc-cc43-4eb7-a4b1-b8bd48ad70df"

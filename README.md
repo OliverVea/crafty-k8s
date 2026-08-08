@@ -56,6 +56,37 @@ the type. The ones that matter:
 | `resources.requests.cpu` | `2` | Requests, but deliberately **no CPU limit**: CFS quota throttling mid-tick is the top cause of phantom TPS stutter on containerized Minecraft servers. |
 | `podSecurityContext.fsGroup` | `0` | Crafty runs as a non-root user relying on root-group permissions on its `/crafty` mounts. Without this the volume is not writable. |
 | `modsManifest.enabled` | `false` | Opt-in daily CronJob that writes a `mods-manifest.txt` (sha256 + size of every `*.jar`) into each server dir, so a fingerprint of the installed modpack rides along in every backup. Off by default to keep the chart mod-agnostic; on in `values-homelab.yaml`. |
+| `logoutBackup.enabled` | `false` | Opt-in poller that fires a backup config when the last player leaves a server (Crafty only schedules backups on time intervals — there is no native "last logout" hook). Needs `serverId`, `backupConfigId`, and a scoped API key in a secret. See [Last-logout backups](#last-logout-backups). |
+
+### Last-logout backups
+
+`logoutBackup` runs a tiny in-cluster poller that watches a server's online-player count
+over the Crafty API and triggers a chosen backup config the moment it drops to zero. It is
+a pure API client — no PVC, no server-log access.
+
+It needs a **scoped API key**, which is runtime state and never lives in git (like the panel's
+admin password). Create a least-privilege service account in Crafty and put its token in a
+secret. The key needs `COMMANDS` on the target server (that both grants server visibility and
+satisfies the backup-trigger permission check) and **no** global/crafty permissions:
+
+```sh
+# 1. A role scoped to the server (mask bit 0 = COMMANDS, bit 4 = BACKUP):
+#    POST /api/v2/roles  {"name":"logout-backup-role",
+#      "servers":[{"server_id":"<SID>","permissions":"10001000"}], "mfa_required":false}
+# 2. A non-superuser user with that role:
+#    POST /api/v2/users  {"username":"logoutbackupbot","password":"<random>",
+#      "roles":[<role_id>], "superuser":false}
+# 3. An API key under that user (no global perms, not full access):
+#    PATCH /api/v2/users/<uid>/key  {"name":"logoutbackupbot",
+#      "server_permissions_mask":"10001000","crafty_permissions_mask":"000","full_access":false}
+# 4. Retrieve the token:  GET /api/v2/users/<uid>/key/<key_id>  -> data
+kubectl -n apps create secret generic crafty-api-key --from-literal=token='<the-token>'
+```
+
+Note: an API-key token is rejected if its issue time is in the same second as the user's
+creation (Crafty compares them at one-second resolution), so retrieve the token a moment
+after creating the user. The token is durable across restarts but dies if the admin password
+is changed or tokens are invalidated — regenerate and update the secret if that happens.
 
 ### Java versions
 

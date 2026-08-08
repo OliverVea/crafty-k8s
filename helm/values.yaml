@@ -112,3 +112,24 @@ modsManifest:
   schedule: "0 4 * * *"
   # Needs only sha256sum, stat, date and a POSIX shell — busybox/alpine covers it.
   image: alpine:3.20
+
+# Optional "back up on last logout" trigger. Crafty schedules backups only on time
+# intervals; there is no native "last player left" hook. This poller watches the online
+# count over the API and fires a backup config when it drops to zero. OFF by default;
+# it needs a world-specific serverId + backupConfigId and a scoped Crafty API key in a
+# secret (created out-of-band, never in git — same category as the admin credentials).
+logoutBackup:
+  enabled: false
+  # Any image with python3 (stdlib only — no pip). python:3.12-alpine is ~50MB.
+  image: python:3.12-alpine
+  # Which server to watch and which backup config to fire. Empty in the generic chart.
+  serverId: ""
+  backupConfigId: ""
+  # How often to poll the online count. 30s means a backup fires within ~30s of the
+  # last player leaving; mods change rarely so there is no need to poll harder.
+  pollSeconds: 30
+  # In-cluster panel URL. Empty = derive https://<release>.<ns>.svc.cluster.local:<panelPort>.
+  craftyUrl: ""
+  # Secret holding the scoped API key token (key `token`). Create it out-of-band.
+  apiKeySecret: crafty-api-key
+  apiKeySecretKey: token
