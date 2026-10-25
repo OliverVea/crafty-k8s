@@ -1,4 +1,4 @@
-// Every push deploys to apps. config.yaml beside it is the old v1 config.
+// Every push deploys to apps.
 import { HelmRelease, pipeline, secret, step, steps, Source } from "@olivervea/pipelines";
 import * as M from "./models";
 

@@ -104,29 +104,24 @@ and real authentication in front of it first.
 
 ## CD
 
-[`.pipelines/config.yaml`](.pipelines/config.yaml) defines an Olve.Pipelines pipeline:
+[`.pipelines/pipeline.ts`](.pipelines/pipeline.ts) defines an Olve.Pipelines pipeline; every push
+runs it, one stage after another:
 
 ```
-package (production) ──(ArtifactBundle)──> deploy ──> verify
+source ──> check ──> deploy ──> verify
 ```
 
 | Step | Does | Fails the pipeline when |
 |---|---|---|
-| **package** | `helm lint`, `helm template` with the real release/namespace, asserts a Deployment + Service + PVC render, asserts the image tag is **pinned**, then `helm package` into the bundle | a template is broken, a resource stops rendering, or the chart would ship `:latest` |
-| **deploy** | scp's the packaged chart to the host and `helm upgrade --install --wait` | the rollout does not complete |
-| **verify** | `kubectl rollout status`, asserts the **running image equals the packaged image**, and `GET /login` on the panel returns 200 | a stale ReplicaSet survived, or the panel is Ready but not serving |
+| **source** | fetches the pushed commit from GitHub | |
+| **check** | `helm lint`, `helm template` with the real release/namespace, asserts a Deployment + Service + PVC render and the image tag is **pinned** | a template is broken, a resource stops rendering, or the chart would ship `:latest` |
+| **deploy** | `helm upgrade --install` over SSH on the cluster host, then waits for the rollout | the rollout does not complete |
+| **verify** | asserts the **running image equals the checked image**, and `GET /login` on the panel returns 200 | a stale ReplicaSet survived, or the panel is Ready but not serving |
 
-Two things worth calling out, because both are easy to get wrong:
+**A finished rollout is not verification.** It proves a pod reached Ready, which is a TCP-level fact.
+It does not prove the panel serves HTTP, and it does not catch a deploy that silently left the
+previous image running. `verify` asserts both.
 
-- **There is no build step, but there is still a production step.** Crafty is a third-party image,
-  so nothing is compiled — but the chart is still validated and packaged into the bundle. Deploy
-  installs *that artifact*, not a fresh fetch of the repo, so what ships is exactly what passed the
-  gate.
-- **`helm --wait` is not verification.** It proves a pod reached Ready, which is a TCP-level fact.
-  It does not prove the panel serves HTTP, and it does not catch a deploy that silently left the
-  previous image running. `verify` asserts both.
-
-To point it at a different cluster, edit the `env` blocks on the steps; nothing host-specific is
-baked into the scripts. Unset `PANEL_URL` to skip the HTTP check. The only secret is
-`SSH_PRIVATE_KEY`, the key used to reach the cluster host; `GITHUB_TOKEN` is optional and only
-needed if you make your fork private.
+To point it at a different cluster, change `HOST` in `pipeline.ts` and the panel address in
+`handlers/verify.ts`. The only secret is `SSH_PRIVATE_KEY` (`pl secret set`), the key used to reach
+the cluster host; a private fork also needs a GitHub token on the `source` step.
