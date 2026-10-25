@@ -1,1 +1,3 @@
 *.tgz
+.pipelines/.olve/
+.pipelines/node_modules/
