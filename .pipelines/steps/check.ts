@@ -1,11 +1,18 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { implement } from "@olivervea/pipelines";
-import { check } from "../pipeline";
+import { implement, step, Source } from "@olivervea/pipelines";
+import * as M from "../models";
 
 const KINDS = ["Deployment", "Service", "PersistentVolumeClaim"];
 
-export default implement(check, async ({ source }, ctx) => {
+export const check = implement(step({
+  name: "check",
+  description: "Lints and renders the chart; it must render a Deployment, Service and PVC with a pinned image tag.",
+  image: "alpine/helm:3.21.3",
+  input: { source: Source },
+  output: M.CheckedChart,
+  timeoutSeconds: 300,
+}), async ({ source }, ctx) => {
   const chart = join(await ctx.files.fetch(source.tree), "helm");
   await ctx.exec(["helm", "lint", chart]);
   await ctx.exec(["helm", "lint", chart, "-f", join(chart, "values-homelab.yaml")]);
